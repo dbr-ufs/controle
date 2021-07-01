@@ -7471,7 +7471,7 @@ Rampa2_Value = [
 -1.2275391,-0.9520147;
 ];
 h=plot(Rampa2_Time(:,1), Rampa2_Value(:,1), Rampa2_Time(:,2), Rampa2_Value(:,2));
-axis([35.09000015258789,40.09000015258789,-3.0,3.0]);
+axis([36,37,-3.0,3.0]);
 set(h(1),'Color',[1.0,0.0,0.0]);
 set(h(1),'LineStyle','-');
 set(h(1),'Marker','none');
@@ -7488,10 +7488,68 @@ set(h,'Color',[0.0,0.0,0.0]);
 h=ylabel('Value');
 set(h,'Color',[0.0,0.0,0.0]);
 
-data = iddata(Rampa2_Value(3500:end,1),Rampa2_Value(3500:end,2),Rampa2_Time(3501,1)-Rampa2_Time(3500,1));
+% Selecionando somente os dados finais do regime permanente
+y  = Rampa2_Value(3500:end,1);
+u  = Rampa2_Value(3500:end,2);
+dt = Rampa2_Time(3501,1)-Rampa2_Time(3500,1);
+yy = [Rampa2_Time(3500:end,1)-34.99 y];
+uu = [Rampa2_Time(3500:end,1)-34.99 u];
+
+
+% Forçando o PID = kp + kd * s
+kp = 3;
+kd = 0.05;
+
+data = iddata(y,u,dt);
 np = 2;
 nz = 1;
 iodelay = NaN;
 sys = tfest(data,np,nz,iodelay)
-compare(data,sys)
+% figure
+% compare(data,sys)
 %bode(sys)
+
+% Forçando tipo 1 - com uma integral - baseado no conhecimento que temos da
+% planta, mas em malha fechada fica:
+% desta forma os polos têm que ser reais
+m = idproc('P2Z','Tz',kd/kp,'Kp',1); % forçando Tz = kd/kp
+sys1 = procest(data,m) 
+% figure
+% compare(data,sys,sys1)
+% T_e = simplify(sys1.Kp*(1+sys1.Tz*s)/(1+sys1.Tp1*s)/(1+sys1.Tp2*s))
+TF = tf(sys1)
+
+Ts = dt;
+alpha = 1 / sys1.Tp1 / sys1.Tp2 / kp
+beta = (sys1.Tp1+sys1.Tp2)*alpha*kp - alpha*kd
+% a = alpha*Ts^2
+% b = beta/Ts-1
+
+% Usando um zero, dois polos, podendo ser complexo
+m = idproc('P2ZU','Tz',kd/kp,'Kp',1); % forçando Tz = kd/kp
+sys2 = procest(data,m) 
+figure
+compare(data,sys,sys1,sys2)
+alpha = 1 / sys2.Tw^2 / kp
+beta = 2*sys2.Zeta*sys2.Tw*alpha*kp - alpha*kd
+% a = alpha*Ts^2
+% b = beta/Ts-1
+
+% Tabela III do artigo Modelagem e Identificação de sistemas lineares
+a = 0.0185;
+b = 0.8808;
+
+% Saindo de [alpha,beta] e chegando na função de transferência
+syms s
+% alpha = a/Ts^2
+% beta = (b+1)*Ts
+Gs = (kp + kd * s) * alpha / s / (s+beta)
+T = simplify(Gs / (1 + Gs))
+[num, den] = numden(T);
+num = sym2poly(num);   
+den = sym2poly(den);
+% dividindo pelo mesmo valor
+ne = num(end);
+num = num/ne;
+den = den/ne;
+%TF = tf(num,den)
