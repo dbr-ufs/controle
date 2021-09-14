@@ -1,0 +1,6 @@
+nbgitpuller
+
+# Data analytics
+numpy
+matplotlib
+pandas
